@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -173,13 +174,19 @@ func (h *TunnelHandlers) forwardRequestToTunnel(c *gin.Context, connection *mode
 				}
 			}
 		}
-		
+
 		// Set status code
 		c.Status(response.StatusCode)
-		
-		// Simple: just return whatever the body is
-		// Headers already set above, they contain Content-Type
-		if bodyStr, ok := response.Body.(string); ok {
+
+		// Binary bodies arrive base64-encoded; decode and send the raw bytes.
+		if bodyStr, ok := response.Body.(string); ok && response.BodyEncoding == "base64" {
+			raw, err := base64.StdEncoding.DecodeString(bodyStr)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "Invalid binary body from tunnel"})
+			} else {
+				c.Data(response.StatusCode, c.Writer.Header().Get("Content-Type"), raw)
+			}
+		} else if bodyStr, ok := response.Body.(string); ok {
 			c.String(response.StatusCode, "%s", bodyStr)
 		} else {
 			c.JSON(response.StatusCode, response.Body)
